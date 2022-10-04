@@ -3,7 +3,6 @@
 #include <appmodel.h>
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
-const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
 
 int main() {
 
@@ -41,25 +40,6 @@ int main() {
 	}
 
 	hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
-	if (!SUCCEEDED(hr)) {
-		return hr;
-	}
-
-	// Run mail app
-	Microsoft::WRL::ComPtr<IApplicationActivationManager> app_activation_manager;
-	hr = CoCreateInstance(
-		CLSID_ApplicationActivationManager,
-		NULL,
-		CLSCTX_ALL,
-		IID_IApplicationActivationManager,
-		&app_activation_manager
-	);
-	if (!SUCCEEDED(hr)) {
-		return hr;
-	}
-
-	DWORD procces_id;
-	hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_NONE, &procces_id);
 	if (!SUCCEEDED(hr)) {
 		return hr;
 	}
