@@ -15,7 +15,8 @@ This program simply run it with debug enabled, and this will make it sync after 
 
 ## Usage
 
-Get the lastest excutable from [Releases](./releases/latest) and run the .exe file, then the Mail app should be auto sync fixed
+Get the [latest excutable](https://github.com/Legend-Master/WindowsMailAutoSyncFix/releases/latest/download/WindowsMailAutoSyncFix.exe
+) and run it, then the Mail app should be auto sync fixed
 
 If you want this app to run at start up, make a shortcut and put it in `C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp`(all users) or `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`(current user)
 
