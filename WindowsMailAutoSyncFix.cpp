@@ -7,7 +7,7 @@ const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8weky
 int main() {
 
 	auto hr = CoInitialize(NULL);
-	if (!SUCCEEDED(hr)) {
+	if (hr != S_OK) {
 		return hr;
 	}
 
@@ -15,13 +15,13 @@ int main() {
 	UINT32 count = 0;
 	UINT32 buffer_length = 0;
 	hr = GetPackagesByPackageFamily(PACKAGE_FAMILY_NAME, &count, NULL, &buffer_length, NULL);
-	if (count < 1 || !SUCCEEDED(hr) && hr != ERROR_INSUFFICIENT_BUFFER) {
+	if (count < 1 || hr != ERROR_INSUFFICIENT_BUFFER) {
 		return hr;
 	}
 	auto full_names = new PWSTR[count];
 	auto buffer = new WCHAR[buffer_length];
 	hr = GetPackagesByPackageFamily(PACKAGE_FAMILY_NAME, &count, full_names, &buffer_length, buffer);
-	if (!SUCCEEDED(hr)) {
+	if (hr != S_OK) {
 		return hr;
 	}
 	auto package_full_name = full_names[0];
@@ -35,12 +35,12 @@ int main() {
 		IID_IPackageDebugSettings,
 		&package_debug_settings
 	);
-	if (!SUCCEEDED(hr)) {
+	if (hr != S_OK) {
 		return hr;
 	}
 
 	hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
-	if (!SUCCEEDED(hr)) {
+	if (hr != S_OK) {
 		return hr;
 	}
 
