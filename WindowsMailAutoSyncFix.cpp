@@ -3,6 +3,7 @@
 #include <appmodel.h>
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
+const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
 
 int main() {
 
@@ -42,6 +43,34 @@ int main() {
 	hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
 	if (hr != S_OK) {
 		return hr;
+	}
+
+	// Prelaunch once terminated
+	Microsoft::WRL::ComPtr<IApplicationActivationManager> app_activation_manager;
+	hr = CoCreateInstance(
+		CLSID_ApplicationActivationManager,
+		NULL,
+		CLSCTX_ALL,
+		IID_IApplicationActivationManager,
+		&app_activation_manager
+	);
+	if (hr != S_OK) {
+		return hr;
+	}
+
+	while (true) {
+		DWORD procces_id;
+		hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH, &procces_id);
+		if (hr != S_OK) {
+			return hr;
+		}
+
+		HANDLE handle = OpenProcess(SYNCHRONIZE, FALSE, procces_id);
+		auto status = WaitForSingleObject(handle, INFINITE);
+		if (status != WAIT_OBJECT_0) {
+			Sleep(1000); // Prevent infinite loop consume too much cpu
+		}
+		CloseHandle(handle);
 	}
 
 }
