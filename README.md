@@ -22,6 +22,10 @@ If you want this app to run at start up, make a shortcut and put it in `C:\Progr
 
 Note: this program will make the Mail app run in background once you close it, so you'll need to terminate this program first if you want to terminate the Mail app
 
+## Known Issues
+
+After resume from sleep/hibernate mode while the Mail app is running in the background (showing in task manager background processes), you'll need to open the Mail app once to get any notifications
+
 ## Acknowledgement
 
 Big thanks to this article: https://www.unknowncheats.me/forum/general-programming-and-reversing/177183-basic-intermediate-techniques-uwp-app-modding.html
