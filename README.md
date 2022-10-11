@@ -24,8 +24,11 @@ Note: this program will make the Mail app run in background once you close it, s
 
 ## Known Issues
 
-After resume from sleep/hibernate mode while the Mail app is running in the background (showing in task manager background processes), you'll need to open the Mail app once to get any notifications
+~~After resume from sleep/hibernate mode while the Mail app is running in the background (showing in task manager background processes), you'll need to open the Mail app once to get any notifications~~ (Fixed on v0.0.4)
 
 ## Acknowledgement
 
 Big thanks to this article: https://www.unknowncheats.me/forum/general-programming-and-reversing/177183-basic-intermediate-techniques-uwp-app-modding.html
+
+`NtSuspendProcess()` and `NtResumeProcess()`'s usage is from: https://github.com/FedericoCarboni/node-ntsuspend
+> This library uses NtSuspendProcess() and NtResumeProcess() from NTDLL, these functions are not officially documented on MSDN; they have been consistently available since Windows XP, but are not guaranteed to work in the future.
