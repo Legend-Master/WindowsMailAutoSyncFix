@@ -1,6 +1,8 @@
 #using <System.dll>
 #include <ShObjIdl.h>
 #include <appmodel.h>
+#include <Shlwapi.h>
+#include <Psapi.h>
 
 typedef NTSTATUS(NTAPI* pNtSuspendProcess)(IN HANDLE ProcessHandle);
 pNtSuspendProcess NtSuspendProcess;
@@ -9,20 +11,46 @@ pNtResumeProcess NtResumeProcess;
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
 const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
+const wchar_t* BACKGROUND_EXE_NAME = L"HxTsr.exe";
 
-DWORD pid = 0;
+wchar_t background_exe_path[MAX_PATH];
 
-void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerModeChangedEventArgs^ e)
-{
-	if (pid == 0) {
-		return;
+DWORD GetFirstPidByPath(PCWSTR path) {
+	DWORD processes[1024];
+	DWORD needed;
+	if (!EnumProcesses(processes, sizeof(processes), &needed)) {
+		return 0;
 	}
+
+	for (auto i = 0; i < needed / sizeof(DWORD); i++) {
+		auto pid = processes[i];
+		auto handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+		WCHAR file_name[MAX_PATH];
+		GetModuleFileNameEx(handle, NULL, file_name, MAX_PATH);
+		CloseHandle(handle);
+		if (wcscmp(file_name, path) == 0) {
+			return pid;
+		}
+	}
+
+	return 0;
+}
+
+void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerModeChangedEventArgs^ e) {
 	if (e->Mode == Microsoft::Win32::PowerModes::Suspend) {
+		auto pid = GetFirstPidByPath(background_exe_path);
+		if (pid == 0) {
+			return;
+		}
 		HANDLE handle = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, pid);
 		NtSuspendProcess(handle);
 		CloseHandle(handle);
 	}
 	else if (e->Mode == Microsoft::Win32::PowerModes::Resume) {
+		auto pid = GetFirstPidByPath(background_exe_path);
+		if (pid == 0) {
+			return;
+		}
 		HANDLE handle = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, pid);
 		NtResumeProcess(handle);
 		CloseHandle(handle);
@@ -31,12 +59,36 @@ void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerMo
 
 int main() {
 
+	// Allow single instance only
+	HRESULT hr;
+	WCHAR us_path[MAX_PATH];
+	hr = GetModuleFileName(NULL, us_path, MAX_PATH);
+	if (hr == 0) {
+		return hr;
+	}
+	// Replace '\' with '/' since CreateMutex treate it as a namesspace separator
+	// https://devblogs.microsoft.com/oldnewthing/20120112-00/?p=8583
+	for (auto i = 0; i < MAX_PATH; i++) {
+		auto character = us_path[i];
+		if (character == L'\0') {
+			break;
+		}
+		if (character == L'\\') {
+			us_path[i] = L'/';
+		}
+	}
+	wchar_t mutex_name[MAX_PATH + 7] = L"Global\\";
+	wcsncat_s(mutex_name, us_path, MAX_PATH);
+	auto handle = CreateMutex(NULL, TRUE, mutex_name);
+	if (handle == NULL || GetLastError() == ERROR_ALREADY_EXISTS) {
+		return 1;
+	}
+
 	// System.dll seems to have called CoInitialize already
 	//auto hr = CoInitialize(NULL);
 	//if (hr != S_OK) {
 	//	return hr;
 	//}
-	HRESULT hr;
 
 	// Get package full name
 	UINT32 count = 0;
@@ -52,6 +104,22 @@ int main() {
 		return hr;
 	}
 	auto package_full_name = full_names[0];
+
+	// Get background exe path (for suspend/resume on sleep/wakeup)
+	UINT32 path_length = 0;
+	hr = GetPackagePathByFullName(package_full_name, &path_length, NULL);
+	if (hr != ERROR_INSUFFICIENT_BUFFER) {
+		return hr;
+	}
+	auto package_path = new WCHAR[path_length];
+	hr = GetPackagePathByFullName(package_full_name, &path_length, package_path);
+	if (hr != S_OK) {
+		return hr;
+	}
+	auto out = PathCombine(background_exe_path, package_path, BACKGROUND_EXE_NAME);
+	if (out == NULL) {
+		return 1;
+	}
 
 	// Enable debug
 	IPackageDebugSettings* package_debug_settings;
@@ -71,6 +139,17 @@ int main() {
 		return hr;
 	}
 
+	// Load suspend and resume functions
+	auto ntdll = GetModuleHandle(L"ntdll.dll");
+	if (ntdll == NULL) {
+		return GetLastError();
+	}
+	NtSuspendProcess = (pNtSuspendProcess)GetProcAddress(ntdll, "NtSuspendProcess");
+	NtResumeProcess = (pNtResumeProcess)GetProcAddress(ntdll, "NtResumeProcess");
+
+	// Suspend and resume background exe on power state change
+	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
+
 	// Prelaunch once terminated
 	IApplicationActivationManager* app_activation_manager;
 	hr = CoCreateInstance(
@@ -84,22 +163,13 @@ int main() {
 		return hr;
 	}
 
-	auto ntdll = GetModuleHandle(L"ntdll.dll");
-	if (ntdll == NULL) {
-		return GetLastError();
-	}
-	NtSuspendProcess = (pNtSuspendProcess)GetProcAddress(ntdll, "NtSuspendProcess");
-	NtResumeProcess = (pNtResumeProcess)GetProcAddress(ntdll, "NtResumeProcess");
-
-	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
-
 	while (true) {
+		DWORD pid;
 		hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH, &pid);
 		if (hr != S_OK) {
 			return hr;
 		}
-
-		HANDLE handle = OpenProcess(SYNCHRONIZE, FALSE, pid);
+		auto handle = OpenProcess(SYNCHRONIZE, FALSE, pid);
 		auto status = WaitForSingleObject(handle, INFINITE);
 		if (status != WAIT_OBJECT_0) {
 			Sleep(1000); // Prevent infinite loop consume too much cpu
