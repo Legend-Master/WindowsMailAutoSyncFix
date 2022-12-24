@@ -29,6 +29,3 @@ Note: this program will make the Mail app run in background once you close it, s
 ## Acknowledgement
 
 Big thanks to this article: https://www.unknowncheats.me/forum/general-programming-and-reversing/177183-basic-intermediate-techniques-uwp-app-modding.html
-
-`NtSuspendProcess()` and `NtResumeProcess()`'s usage is from: https://github.com/FedericoCarboni/node-ntsuspend
-> This library uses NtSuspendProcess() and NtResumeProcess() from NTDLL, these functions are not officially documented on MSDN; they have been consistently available since Windows XP, but are not guaranteed to work in the future.

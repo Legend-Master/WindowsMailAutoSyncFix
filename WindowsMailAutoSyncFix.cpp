@@ -4,11 +4,6 @@
 #include <Shlwapi.h>
 #include <Psapi.h>
 
-typedef NTSTATUS(NTAPI* pNtSuspendProcess)(IN HANDLE ProcessHandle);
-pNtSuspendProcess NtSuspendProcess;
-typedef NTSTATUS(NTAPI* pNtResumeProcess)(IN HANDLE ProcessHandle);
-pNtResumeProcess NtResumeProcess;
-
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
 const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
 const wchar_t* BACKGROUND_EXE_NAME = L"HxTsr.exe";
@@ -42,17 +37,8 @@ void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerMo
 		if (pid == 0) {
 			return;
 		}
-		HANDLE handle = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, pid);
-		NtSuspendProcess(handle);
-		CloseHandle(handle);
-	}
-	else if (e->Mode == Microsoft::Win32::PowerModes::Resume) {
-		auto pid = GetFirstPidByPath(background_exe_path);
-		if (pid == 0) {
-			return;
-		}
-		HANDLE handle = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, pid);
-		NtResumeProcess(handle);
+		HANDLE handle = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+		TerminateProcess(handle, 0); // Not sure what error code should I use
 		CloseHandle(handle);
 	}
 }
@@ -66,7 +52,7 @@ int main() {
 	if (hr == 0) {
 		return hr;
 	}
-	// Replace '\' with '/' since CreateMutex treate it as a namesspace separator
+	// Replace '\' with '/' since CreateMutex treats it as a namespace separator
 	// https://devblogs.microsoft.com/oldnewthing/20120112-00/?p=8583
 	for (auto i = 0; i < MAX_PATH; i++) {
 		auto character = us_path[i];
@@ -138,14 +124,6 @@ int main() {
 	if (hr != S_OK) {
 		return hr;
 	}
-
-	// Load suspend and resume functions
-	auto ntdll = GetModuleHandle(L"ntdll.dll");
-	if (ntdll == NULL) {
-		return GetLastError();
-	}
-	NtSuspendProcess = (pNtSuspendProcess)GetProcAddress(ntdll, "NtSuspendProcess");
-	NtResumeProcess = (pNtResumeProcess)GetProcAddress(ntdll, "NtResumeProcess");
 
 	// Suspend and resume background exe on power state change
 	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
