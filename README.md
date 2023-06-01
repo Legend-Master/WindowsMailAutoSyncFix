@@ -30,9 +30,9 @@ Note: this program will make the Mail app run in background once you close it, s
 
 To prevent can't get notifications after resume, I decided to kill Mail app on sleep/hibernate, and it's still not guaranteed to work after resume (but a much better chance to work than the previous one, and when it happens, a quick fix is go to Task Manager and go to all, find HxTsr.exe, terminate it, this will close the Mail app and then everything should be just fine again) (v0.0.6)
 
-When updating Mail app, this program will be blocked and then shutdown, you need to manually reopen it after the update ends (may fix it in the future, but it's hard to test so maybe not)
+~~When updating Mail app, this program will be blocked and then shutdown, you need to manually reopen it after the update ends (may fix it in the future, but it's hard to test so maybe not)~~ (Fixed on v0.1.0)
 
-No error notification if something went wrong (maybe popup a message window and having a restart button in it?)
+~~No error notification if something went wrong (maybe popup a message window and having a restart button in it?)~~ (Fixed on v0.1.0)
 
 ## Acknowledgement
 

@@ -1,3 +1,7 @@
+# The Dev Story
+
+### The start
+
 When I first getting started, I'm just looking at the behavior of the Mail app, when does it work?
 
 It only works when you have it's window opened(not minimized, not closed, can be not focused/get overlapped by other windows), or it works pretty inconsistent
@@ -78,3 +82,23 @@ Then, I tried to suspend the background process (HxTsr.exe, which is also the ba
 I gave up on suspending, and just kill the program on sleep, and yeah, it's way better, but still not always
 
 At this point, guess I'll have to live with it, put my phone aside and make it notify me with a sound, overall, fixing a program which you can't interact directly, is hard, and I'm proud of myself for going this far
+
+### Updates from May 2023:
+
+#### Fix having to restart when Mail updates
+
+It's really bad that it stops working whenever the Mail app updates, when it updates, it's going to shutdown the Mail app, and then we detected it, so we'll try to restart prelaunch it, and it leads to a prompt saying "it's updating, please wait", and a failed call causing the program to exit
+
+My first thought was if there's a way to detect if it's updating, but I never found it, and I think keep trying won't be a good idea because of that prompt (yeah, unacceptable)
+
+So for a long time I'm just leaving it and stop thinking about it
+
+Util a day, just getting bored and picked this up again, and I just feel like trying to call `ActivateApplication` with `AO_NOERRORUI` (which is something I didn't understand what is it for), and it's be like they know what I'm doing, the Mail app updated in just 2 days, and it worked!
+
+#### Message box style
+
+I was using message box to debug if it worked, since it's a easy way to prompt me when the Mail app updates and if something's going on (too lazy to log things)
+
+And found that the message box icons are in old styles, after some searches, I reallized that it's more complicated then I thought
+
+The system icons are related to comctl32.dll, and Windows shipped two version of it, the default one is in the System32 directory, and the newer version is in the side load directory WinSxS, and specifing Common-Controls version to 6 in the app manifest will make it load the newer version
