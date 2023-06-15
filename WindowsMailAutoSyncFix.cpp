@@ -1,10 +1,11 @@
 #include <memory>
 
-#using <System.dll>
 #include <ShObjIdl.h>
 #include <appmodel.h>
 #include <Shlwapi.h>
 #include <Psapi.h>
+#include <powerbase.h>
+#include <powrprof.h>
 #include <winrt/base.h>
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
@@ -54,19 +55,19 @@ DWORD GetFirstPidByPath(wchar_t* path) {
 	return 0;
 }
 
-void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerModeChangedEventArgs^ e) {
-	if (e->Mode == Microsoft::Win32::PowerModes::Suspend) {
+ULONG CALLBACK OnSuspendOrResume(PVOID context, ULONG type, PVOID setting) {
+	if (type == PBT_APMSUSPEND) {
 		auto pid = GetFirstPidByPath(background_exe_path);
-		if (pid == 0) {
-			return;
+		if (pid != 0) {
+			HANDLE handle = OpenProcess(PROCESS_TERMINATE, false, pid);
+			TerminateProcess(handle, 0); // Not sure what error code should I use
+			CloseHandle(handle);
 		}
-		HANDLE handle = OpenProcess(PROCESS_TERMINATE, false, pid);
-		TerminateProcess(handle, 0); // Not sure what error code should I use
-		CloseHandle(handle);
 	}
+	return 0;
 }
 
-long MainFunctions() {
+long GetBackgroundExePathAndEnableDebug() {
 	// Get package full name
 	uint32_t count = 0;
 	uint32_t buffer_length = 0;
@@ -136,21 +137,22 @@ int main() {
 		return 1;
 	}
 
-	// System.dll seems to have called CoInitialize already
-	//winrt::init_apartment();
-	//auto hr = CoInitialize(NULL);
-	//if (hr != S_OK) {
-	//	return hr;
-	//}
+	winrt::init_apartment();
 
-	auto error_code = MainFunctions();
+	auto error_code = GetBackgroundExePathAndEnableDebug();
 	if (error_code != NO_ERROR) {
 		ShowErrorMessageBox(error_code);
 		return error_code;
 	}
 
 	// Suspend and resume background exe on power state change
-	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
+	HPOWERNOTIFY power_notify_handle;
+	_DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = { &OnSuspendOrResume, NULL };
+	error_code = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &power_notify_handle);
+	if (error_code != NO_ERROR) {
+		ShowErrorMessageBox(error_code);
+		return error_code;
+	}
 
 	// Prelaunch once terminated
 	auto app_activation_manager = winrt::create_instance<IApplicationActivationManager>(CLSID_ApplicationActivationManager);
@@ -165,7 +167,7 @@ int main() {
 		}
 		if (failed_once) {
 			failed_once = false;
-			error_code = MainFunctions();
+			error_code = GetBackgroundExePathAndEnableDebug();
 			if (error_code != NO_ERROR) {
 				ShowErrorMessageBox(error_code);
 				return error_code;
