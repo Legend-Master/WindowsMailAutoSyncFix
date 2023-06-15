@@ -5,6 +5,7 @@
 #include <appmodel.h>
 #include <Shlwapi.h>
 #include <Psapi.h>
+#include <winrt/base.h>
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
 const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
@@ -98,19 +99,8 @@ long MainFunctions() {
 	}
 
 	// Enable debug
-	IPackageDebugSettings* package_debug_settings;
-	auto hr = CoCreateInstance(
-		CLSID_PackageDebugSettings,
-		NULL,
-		CLSCTX_ALL,
-		IID_IPackageDebugSettings,
-		(void**)&package_debug_settings
-	);
-	if (hr != S_OK) {
-		return hr;
-	}
-
-	hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
+	auto package_debug_settings = winrt::create_instance<IPackageDebugSettings>(CLSID_PackageDebugSettings);
+	auto hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
 	if (hr != S_OK) {
 		return hr;
 	}
@@ -147,6 +137,7 @@ int main() {
 	}
 
 	// System.dll seems to have called CoInitialize already
+	//winrt::init_apartment();
 	//auto hr = CoInitialize(NULL);
 	//if (hr != S_OK) {
 	//	return hr;
@@ -162,22 +153,11 @@ int main() {
 	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
 
 	// Prelaunch once terminated
-	IApplicationActivationManager* app_activation_manager;
-	auto hr = CoCreateInstance(
-		CLSID_ApplicationActivationManager,
-		NULL,
-		CLSCTX_ALL,
-		IID_IApplicationActivationManager,
-		(void**)&app_activation_manager
-	);
-	if (hr != S_OK) {
-		return hr;
-	}
-
+	auto app_activation_manager = winrt::create_instance<IApplicationActivationManager>(CLSID_ApplicationActivationManager);
 	auto failed_once = false;
 	while (true) {
 		DWORD pid;
-		hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
+		auto hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
 		if (hr != S_OK) {
 			failed_once = true;
 			Sleep(5000);
