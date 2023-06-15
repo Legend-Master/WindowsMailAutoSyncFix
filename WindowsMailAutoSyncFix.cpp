@@ -18,16 +18,18 @@ wchar_t background_exe_path[MAX_PATH];
 
 void ShowErrorMessageBox(long error_code) {
 	wchar_t error_text[1000];
-	if (!FormatMessage(
-		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
-		NULL,
-		error_code,
-		MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
-		// 0,
-		error_text,
-		sizeof(error_text),
-		NULL))
-	{
+	if (
+		!FormatMessage(
+			FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+			NULL,
+			error_code,
+			MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+			// 0,
+			error_text,
+			sizeof(error_text),
+			NULL
+		)
+	) {
 		MessageBox(NULL, L"Something wrong when trying to get the error message", ERROR_MESSAGE_BOX_TITLE, MB_ICONERROR);
 		return;
 	}
@@ -101,12 +103,55 @@ long GetBackgroundExePathAndEnableDebug() {
 
 	// Enable debug
 	auto package_debug_settings = winrt::create_instance<IPackageDebugSettings>(CLSID_PackageDebugSettings);
-	auto hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
-	if (hr != S_OK) {
-		return hr;
-	}
+	winrt::check_hresult(
+		package_debug_settings->EnableDebugging(package_full_name, NULL, NULL)
+	);
 
 	return NO_ERROR;
+}
+
+long MainFunctions() {
+	winrt::init_apartment();
+
+	auto error_code = GetBackgroundExePathAndEnableDebug();
+	if (error_code != NO_ERROR) {
+		return error_code;
+	}
+
+	// Suspend and resume background exe on power state change
+	HPOWERNOTIFY power_notify_handle;
+	DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = { &OnSuspendOrResume, NULL };
+	error_code = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &power_notify_handle);
+	if (error_code != NO_ERROR) {
+		return error_code;
+	}
+
+	// Prelaunch once terminated
+	auto app_activation_manager = winrt::create_instance<IApplicationActivationManager>(CLSID_ApplicationActivationManager);
+	auto failed_once = false;
+	while (true) {
+		DWORD pid;
+		auto hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
+		if (hr != S_OK) {
+			failed_once = true;
+			Sleep(5000);
+			continue;
+		}
+		if (failed_once) {
+			failed_once = false;
+			error_code = GetBackgroundExePathAndEnableDebug();
+			if (error_code != NO_ERROR) {
+				return error_code;
+			}
+			// MessageBox(NULL, L"Restart succeed", ERROR_MESSAGE_BOX_TITLE, MB_ICONINFORMATION);
+		}
+		auto handle = OpenProcess(SYNCHRONIZE, false, pid);
+		auto status = WaitForSingleObject(handle, INFINITE);
+		if (status != WAIT_OBJECT_0) {
+			Sleep(1000); // Prevent infinite loop consume too much cpu
+		}
+		CloseHandle(handle);
+	}
 }
 
 int main() {
@@ -117,7 +162,9 @@ int main() {
 	wchar_t us_path[MAX_PATH];
 	auto path_length = GetModuleFileName(NULL, us_path, MAX_PATH);
 	if (path_length == 0) {
-		return GetLastError();
+		auto error_code = GetLastError();
+		ShowErrorMessageBox(error_code);
+		return error_code;
 	}
 	// Replace '\' with '/' since CreateMutex treats it as a namespace separator
 	// https://devblogs.microsoft.com/oldnewthing/20120112-00/?p=8583
@@ -137,49 +184,14 @@ int main() {
 		return 1;
 	}
 
-	winrt::init_apartment();
-
-	auto error_code = GetBackgroundExePathAndEnableDebug();
-	if (error_code != NO_ERROR) {
+	try {
+		auto error_code = MainFunctions();
 		ShowErrorMessageBox(error_code);
 		return error_code;
-	}
-
-	// Suspend and resume background exe on power state change
-	HPOWERNOTIFY power_notify_handle;
-	_DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = { &OnSuspendOrResume, NULL };
-	error_code = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &power_notify_handle);
-	if (error_code != NO_ERROR) {
+	} catch(const winrt::hresult_error& e) {
+		auto error_code = e.code();
 		ShowErrorMessageBox(error_code);
 		return error_code;
-	}
-
-	// Prelaunch once terminated
-	auto app_activation_manager = winrt::create_instance<IApplicationActivationManager>(CLSID_ApplicationActivationManager);
-	auto failed_once = false;
-	while (true) {
-		DWORD pid;
-		auto hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
-		if (hr != S_OK) {
-			failed_once = true;
-			Sleep(5000);
-			continue;
-		}
-		if (failed_once) {
-			failed_once = false;
-			error_code = GetBackgroundExePathAndEnableDebug();
-			if (error_code != NO_ERROR) {
-				ShowErrorMessageBox(error_code);
-				return error_code;
-			}
-			// MessageBox(NULL, L"Restart succeed", ERROR_MESSAGE_BOX_TITLE, MB_ICONINFORMATION);
-		}
-		auto handle = OpenProcess(SYNCHRONIZE, false, pid);
-		auto status = WaitForSingleObject(handle, INFINITE);
-		if (status != WAIT_OBJECT_0) {
-			Sleep(1000); // Prevent infinite loop consume too much cpu
-		}
-		CloseHandle(handle);
 	}
 
 }
