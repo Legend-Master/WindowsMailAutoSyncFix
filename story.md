@@ -105,7 +105,7 @@ The system icons are related to comctl32.dll, and Windows shipped two version of
 
 ### Updates from June 2023
 
-#### Remove CRL
+#### Remove CLR
 
 > but this program don't have a window, and I don't really like the invisible window solution as well, so I searched up and found CLR(.Net stuffs in c++), and there's a function for this
 
