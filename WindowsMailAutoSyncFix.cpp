@@ -1,10 +1,12 @@
 #include <memory>
 
-#using <System.dll>
 #include <ShObjIdl.h>
 #include <appmodel.h>
 #include <Shlwapi.h>
 #include <Psapi.h>
+#include <powerbase.h>
+#include <powrprof.h>
+#include <winrt/base.h>
 
 const wchar_t* PACKAGE_FAMILY_NAME = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe";
 const wchar_t* APP_USER_MODEL_ID = L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail";
@@ -16,16 +18,18 @@ wchar_t background_exe_path[MAX_PATH];
 
 void ShowErrorMessageBox(long error_code) {
 	wchar_t error_text[1000];
-	if (!FormatMessage(
-		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
-		NULL,
-		error_code,
-		MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
-		// 0,
-		error_text,
-		sizeof(error_text),
-		NULL))
-	{
+	if (
+		!FormatMessage(
+			FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+			NULL,
+			error_code,
+			MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+			// 0,
+			error_text,
+			sizeof(error_text),
+			NULL
+		)
+	) {
 		MessageBox(NULL, L"Something wrong when trying to get the error message", ERROR_MESSAGE_BOX_TITLE, MB_ICONERROR);
 		return;
 	}
@@ -53,19 +57,19 @@ DWORD GetFirstPidByPath(wchar_t* path) {
 	return 0;
 }
 
-void SystemEvents_PowerChanged(System::Object^ sender, Microsoft::Win32::PowerModeChangedEventArgs^ e) {
-	if (e->Mode == Microsoft::Win32::PowerModes::Suspend) {
+ULONG CALLBACK OnSuspendOrResume(PVOID context, ULONG type, PVOID setting) {
+	if (type == PBT_APMSUSPEND) {
 		auto pid = GetFirstPidByPath(background_exe_path);
-		if (pid == 0) {
-			return;
+		if (pid != 0) {
+			HANDLE handle = OpenProcess(PROCESS_TERMINATE, false, pid);
+			TerminateProcess(handle, 0); // Not sure what error code should I use
+			CloseHandle(handle);
 		}
-		HANDLE handle = OpenProcess(PROCESS_TERMINATE, false, pid);
-		TerminateProcess(handle, 0); // Not sure what error code should I use
-		CloseHandle(handle);
 	}
+	return 0;
 }
 
-long MainFunctions() {
+long GetBackgroundExePathAndEnableDebug() {
 	// Get package full name
 	uint32_t count = 0;
 	uint32_t buffer_length = 0;
@@ -98,24 +102,56 @@ long MainFunctions() {
 	}
 
 	// Enable debug
-	IPackageDebugSettings* package_debug_settings;
-	auto hr = CoCreateInstance(
-		CLSID_PackageDebugSettings,
-		NULL,
-		CLSCTX_ALL,
-		IID_IPackageDebugSettings,
-		(void**)&package_debug_settings
+	auto package_debug_settings = winrt::create_instance<IPackageDebugSettings>(CLSID_PackageDebugSettings);
+	winrt::check_hresult(
+		package_debug_settings->EnableDebugging(package_full_name, NULL, NULL)
 	);
-	if (hr != S_OK) {
-		return hr;
-	}
-
-	hr = package_debug_settings->EnableDebugging(package_full_name, NULL, NULL);
-	if (hr != S_OK) {
-		return hr;
-	}
 
 	return NO_ERROR;
+}
+
+long MainFunctions() {
+	winrt::init_apartment();
+
+	auto error_code = GetBackgroundExePathAndEnableDebug();
+	if (error_code != NO_ERROR) {
+		return error_code;
+	}
+
+	// Suspend and resume background exe on power state change
+	HPOWERNOTIFY power_notify_handle;
+	DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = { &OnSuspendOrResume, NULL };
+	error_code = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &power_notify_handle);
+	if (error_code != NO_ERROR) {
+		return error_code;
+	}
+
+	// Prelaunch once terminated
+	auto app_activation_manager = winrt::create_instance<IApplicationActivationManager>(CLSID_ApplicationActivationManager);
+	auto failed_once = false;
+	while (true) {
+		DWORD pid;
+		auto hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
+		if (hr != S_OK) {
+			failed_once = true;
+			Sleep(5000);
+			continue;
+		}
+		if (failed_once) {
+			failed_once = false;
+			error_code = GetBackgroundExePathAndEnableDebug();
+			if (error_code != NO_ERROR) {
+				return error_code;
+			}
+			// MessageBox(NULL, L"Restart succeed", ERROR_MESSAGE_BOX_TITLE, MB_ICONINFORMATION);
+		}
+		auto handle = OpenProcess(SYNCHRONIZE, false, pid);
+		auto status = WaitForSingleObject(handle, INFINITE);
+		if (status != WAIT_OBJECT_0) {
+			Sleep(1000); // Prevent infinite loop consume too much cpu
+		}
+		CloseHandle(handle);
+	}
 }
 
 int main() {
@@ -126,7 +162,9 @@ int main() {
 	wchar_t us_path[MAX_PATH];
 	auto path_length = GetModuleFileName(NULL, us_path, MAX_PATH);
 	if (path_length == 0) {
-		return GetLastError();
+		auto error_code = GetLastError();
+		ShowErrorMessageBox(error_code);
+		return error_code;
 	}
 	// Replace '\' with '/' since CreateMutex treats it as a namespace separator
 	// https://devblogs.microsoft.com/oldnewthing/20120112-00/?p=8583
@@ -146,58 +184,14 @@ int main() {
 		return 1;
 	}
 
-	// System.dll seems to have called CoInitialize already
-	//auto hr = CoInitialize(NULL);
-	//if (hr != S_OK) {
-	//	return hr;
-	//}
-
-	auto error_code = MainFunctions();
-	if (error_code != NO_ERROR) {
+	try {
+		auto error_code = MainFunctions();
 		ShowErrorMessageBox(error_code);
 		return error_code;
-	}
-
-	// Suspend and resume background exe on power state change
-	Microsoft::Win32::SystemEvents::PowerModeChanged += gcnew Microsoft::Win32::PowerModeChangedEventHandler(SystemEvents_PowerChanged);
-
-	// Prelaunch once terminated
-	IApplicationActivationManager* app_activation_manager;
-	auto hr = CoCreateInstance(
-		CLSID_ApplicationActivationManager,
-		NULL,
-		CLSCTX_ALL,
-		IID_IApplicationActivationManager,
-		(void**)&app_activation_manager
-	);
-	if (hr != S_OK) {
-		return hr;
-	}
-
-	auto failed_once = false;
-	while (true) {
-		DWORD pid;
-		hr = app_activation_manager->ActivateApplication(APP_USER_MODEL_ID, NULL, AO_PRELAUNCH | AO_NOERRORUI, &pid);
-		if (hr != S_OK) {
-			failed_once = true;
-			Sleep(5000);
-			continue;
-		}
-		if (failed_once) {
-			failed_once = false;
-			error_code = MainFunctions();
-			if (error_code != NO_ERROR) {
-				ShowErrorMessageBox(error_code);
-				return error_code;
-			}
-			// MessageBox(NULL, L"Restart succeed", ERROR_MESSAGE_BOX_TITLE, MB_ICONINFORMATION);
-		}
-		auto handle = OpenProcess(SYNCHRONIZE, false, pid);
-		auto status = WaitForSingleObject(handle, INFINITE);
-		if (status != WAIT_OBJECT_0) {
-			Sleep(1000); // Prevent infinite loop consume too much cpu
-		}
-		CloseHandle(handle);
+	} catch(const winrt::hresult_error& e) {
+		auto error_code = e.code();
+		ShowErrorMessageBox(error_code);
+		return error_code;
 	}
 
 }

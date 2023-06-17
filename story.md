@@ -67,7 +67,7 @@ Unfortunately still no, it breaks when you go hibernate/sleep
 
 I had no clue why, and the only solution I can think of would be suspend/close the app when hibernate/sleep, and resume/re-open on wake up
 
-And I ran into a problem, there're 2 ways of getting power(sleep/resume) change events, one for window, one for service, to be honest, this program should be a service, but I'm not feeling confident about it, so go for the window one, but this program don't have a window, and I don't really like the invisible window solution as well, so I searched up and found CLR(.Net stuffs in c++), and there's a function for this
+And I ran into a problem, there're 2 ways of getting power(sleep/resume) change events, one for window, one for service, to be honest, this program should be a service, but I'm not feeling confident about it, so I went for the window one, but this program don't have a window, and I don't really like the invisible window solution as well, so I searched up and found CLR(.Net stuffs in c++), and there's a function for this
 
 Next problem, suspend or kill the Mail, kill the process is not a good idea, since you can't really restore things after wake up, so I went for suspend
 
@@ -102,3 +102,13 @@ I was using message box to debug if it worked, since it's a easy way to prompt m
 And found that the message box icons are in old styles, after some searches, I reallized that it's more complicated then I thought
 
 The system icons are related to comctl32.dll, and Windows shipped two version of it, the default one is in the System32 directory, and the newer version is in the side load directory WinSxS, and specifing Common-Controls version to 6 in the app manifest will make it load the newer version
+
+### Updates from June 2023
+
+#### Remove CLR
+
+> but this program don't have a window, and I don't really like the invisible window solution as well, so I searched up and found CLR(.Net stuffs in c++), and there's a function for this
+
+Well, so .NET is using this method anyway... https://github.com/microsoft/referencesource/blob/51cf7850defa8a17d815b4700b67116e3fa283c2/System/compmod/microsoft/win32/SystemEvents.cs#LL1506C34-L1506C34
+
+After looking for more documents and some more experiments, I found [`PowerRegisterSuspendResumeNotification`](https://learn.microsoft.com/en-us/windows/win32/api/powerbase/nf-powerbase-powerregistersuspendresumenotification), and Go is using it as well (https://github.com/golang/go/blob/c5463218a228b082661df3f5f1ba0492a4d3df18/src/runtime/os_windows.go#L305)
